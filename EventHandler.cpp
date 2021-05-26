@@ -36,6 +36,7 @@ void EventHandler::makeClient(const PollOutput &out)
 
     if (started)
     {
+        std::cout << "SENDING TO NEW OBSERVER\n";
         tmp->observe(true);
         sender.send(out.addr, events, 0, game_id);
     }
@@ -74,16 +75,22 @@ void EventHandler::manageResponse(const PollOutput &out)
 
 void EventHandler::disconnectClients(const std::vector<MySockaddr> toDisconnect)
 {
-    //std::cout << "DISCONNECTING " << toDisconnect.size() << '\n';
     for (auto addr : toDisconnect)
-    {
+    {   
         auto it = clients.find(addr);
         if (it != clients.end() && started)
-            it->second->disconnect();
-        else if (it != clients.end())
         {
+            std::cout << "DISCONNECTION1\n";
+            it->first.print();
+            it->second->disconnect();
+        }
+        else if (it != clients.end())
+        {   
+            std::cout << "DISCONNECTION2 SIZE: " << alphaClients.size() << '\n';
+            it->first.print();
             alphaClients.erase(findByPtr(it->second.ptr));
-            clients.erase(it);         
+            clients.erase(it);  
+            std::cout << "SIZE AFTER DC: " << alphaClients.size();       
         }
     }
 }
@@ -140,7 +147,7 @@ bool EventHandler::clientsReady()
     int nonObservers = 0;
     for (auto client : alphaClients)
     {
-        //std::cout << "turning dir: " << client->getTurningDirection() << '\n';
+        std::cout << "Will: " << client->willingToStart() << " observer: " << " " << client->isObserver() << '\n';
         if (!client->isObserver() && !client->willingToStart())
             return false;
         if (!client->isObserver() && client->willingToStart())
@@ -163,13 +170,14 @@ void EventHandler::startGame()
     game_id = rng.rand();
     newGame();
 
-    aliveClients = clients.size();
+    aliveClients = 0;
     int i = 0;
     for (auto client : alphaClients)
     {
         if (client->isObserver())
             continue;
 
+        aliveClients++;
         double x = (rng.rand() % width) + 0.5f;
         double y = (rng.rand() % height) + 0.5f; 
         client->setCoords(client_coord(x, y));

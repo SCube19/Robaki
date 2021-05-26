@@ -93,7 +93,7 @@ int main(int argc, char *argv[])
             eventHandler.tick();
             tickCounter++;
             auto end = std::chrono::high_resolution_clock::now();
-            std::cout << "TICKCOUNTER: " << tickCounter << "\nEST. TICK DURATION: " << std::chrono::duration<double>(end - start).count() << '\n';
+            //std::cout << "TICKCOUNTER: " << tickCounter << "\nEST. TICK DURATION: " << std::chrono::duration<double>(end - start).count() << '\n';
         }
         
         if (!out.noMsg)

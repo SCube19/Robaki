@@ -117,13 +117,12 @@ static long double degrees(long double degree)
 }
 bool Client::move()
 {
-    // std::cout << getName() << '\n';
-    // std::cout << "WITH ANGLE: " << getAngle() << "\n"
+    // std::cerr << "WITH ANGLE: " << getAngle() << "\n"
     //           << coords.first << " " << coords.second << '\n';
     client_coord tmp(coords.first + cosl(degrees(turningAngle)), coords.second + sinl(degrees(turningAngle)));
     bool rVal = (coord_int((uint32_t)tmp.first, (uint32_t)tmp.second) != coord_int((uint32_t)coords.first, (uint32_t)coords.second));
     coords = tmp;
-    // std::cout << coords.first << " " << coords.second << "\n\n";
+    // std::cerr << coords.first << " " << coords.second << "\n\n";
     return rVal;
 }
 
