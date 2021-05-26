@@ -1,0 +1,11 @@
+/gui
+/__pychace__
+client
+*.o
+*.in
+*.py
+struct
+struct.o
+struct.cpp
+screen-worms-server
+client.cpp
