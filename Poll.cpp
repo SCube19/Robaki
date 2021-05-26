@@ -1,34 +1,40 @@
 #include "Poll.h"
-#include "gui/gui2/err.h"
+
+namespace
+{
+    //seconds to timeout client
+    constexpr short timeout = 2;
+    //session_id + next_expected_event_no + turn_direction size
+    constexpr short clientDataSize = 13;
+    //max client name size + 1
+    constexpr short clientNameMax = 21;
+} // namespace
 
 Poll::Poll(unsigned portArg, double roundTime) : port(portArg)
 {
     rTime = (long int)(1000000000.f * roundTime);
-    /* Inicjujemy tablicę z gniazdkami klientów, client[0] to gniazdko centrali */
+    
+    //udp pollfd setup
     pollfd init;
     init.fd = -1;
     init.events = POLLIN;
     init.revents = 0;
     fds.emplace_back(init);
 
-    /* Tworzymy gniazdko centrali */
+    //udp socket setup
     fds[0].fd = socket(PF_INET6, SOCK_DGRAM, 0);
     if (fds[0].fd == -1)
         syserr("Opening stream socket");
 
     int no = 0;
     if (setsockopt(fds[0].fd, IPPROTO_IPV6, IPV6_V6ONLY, (void *)&no, sizeof(no)) < 0)
-        syserr("setsockopt");
-
-    // int yes = 1;
-    // if (setsockopt(fds[0].fd, SOL_SOCKET, SO_REUSEADDR, (char *)&yes, sizeof(yes)) < 0)
-    //     syserr("reuseaddr");
+        syserr("Setsockopt: IPPROTO_IPV6");
 
     int yes = 1;
     if (ioctl(fds[0].fd, FIONBIO, (char *)&yes) < 0)
-        syserr("ioctl");
+        syserr("Ioctl");
 
-    /* Co do adresu nie jesteśmy wybredni */
+    //binding v6 to v4 and v6
     memset(&server, 0, sizeof(server));
     server.sin6_family = AF_INET6;
     server.sin6_addr = in6addr_any;
@@ -37,70 +43,32 @@ Poll::Poll(unsigned portArg, double roundTime) : port(portArg)
              (socklen_t)sizeof(server)) == -1)
         syserr("Binding stream socket");
 
+    //creating tick timer
     if (rTime == 1000000000.f)
         updateTimerFd = createTimer(1, 0);
     else
         updateTimerFd = createTimer(0, rTime);
-
-    std::cout << "starting with socket " << fds[0].fd << '\n';
 }
 
+//============================================PRIVATE METHODS===========================================//
+/////////////////////////////////CLEAR REVENTS////////////////////////////////////////////////////////////
 void Poll::clearRevents()
 {
     for (size_t i = 0; i < fds.size(); i++)
         fds[i].revents = 0;
 }
 
-void Poll::littleMessage(ClientMessage &msg, int nameLen)
+////////////////////////////////LITTLE MESSAGE/////////////////////////////////////////////////////////////
+void Poll::littleMessage(ClientMessage &msg, int nameLen) const
 {
     msg.session_id = be64toh(msg.session_id);
     msg.next_expected_event_no = be32toh(msg.next_expected_event_no);
     msg.player_name[nameLen] = '\0';
 }
 
-int Poll::createTimer(int sec, long int nsec)
-{
-    // std::cout << "CREATING TIMER WITH NSEC: " << nsec << '\n';
-    pollfd p;
-    int timerfd;
-    itimerspec timerValue;
-
-    /* set timerfd */
-    timerfd = timerfd_create(CLOCK_REALTIME, 0);
-    if (timerfd < 0)
-        syserr("timer");
-
-    timerValue.it_value.tv_sec = sec;
-    timerValue.it_value.tv_nsec = nsec;
-    timerValue.it_interval.tv_sec = sec;
-    timerValue.it_interval.tv_nsec = nsec;
-
-    /* set events */
-    p.fd = timerfd;
-    p.revents = 0;
-    p.events = POLLIN;
-
-    fds.emplace_back(p);
-    /* start timer */
-    if (timerfd_settime(timerfd, 0, &timerValue, NULL) < 0)
-        syserr("timer start");
-
-    return timerfd;
-}
-
-void Poll::hardResetMainTimer()
-{
-    if (rTime == 1000000000.f)
-        updateTimerFd = createTimer(1, 0);
-    else
-        updateTimerFd = createTimer(0, rTime);
-    fds[1] = fds[fds.size() - 1];
-    fds.erase(fds.end() - 1);
-}
-
+/////////////////////////////////////ADD CLIENT////////////////////////////////////////////////////////////
 void Poll::addClient(const MySockaddr &addr)
 {
-    //std::cout << "ADDING CLIENT!  ";
     clients.emplace(addr);
 
     int timer = createTimer(2, 0);
@@ -108,14 +76,46 @@ void Poll::addClient(const MySockaddr &addr)
     timersFromAddr.emplace(std::pair<MySockaddr, int>(addr, timer));
 }
 
-void Poll::deleteTimer(int timerFd)
+//////////////////////////////////CHECK NAME///////////////////////////////////////////////////////////////
+bool Poll::checkName(char *name, int len) const
 {
-    //std::cout << "DELETING TIMER : " << timerFd << "  SIZE:" << fds.size();
-    fds.erase(std::find_if(fds.begin(), fds.end(), [timerFd](const pollfd &poll)
-                           { return poll.fd == timerFd; }));
-    //std::cout << "  SIZE:" << fds.size() << '\n';
+    for (int i = 0; i < len; i++)
+        if (name[i] < 33 || name[i] > 126)
+            return false;
+    return true;
 }
 
+////////////////////////////////////////////CREATE TIMER////////////////////////////////////////////////////
+int Poll::createTimer(int sec, long int nsec)
+{
+    pollfd p;
+    int timerfd;
+    itimerspec timerValue;
+
+    //creating timer
+    timerfd = timerfd_create(CLOCK_REALTIME, 0);
+    if (timerfd < 0)
+        syserr("Timer creation");
+
+    timerValue.it_value.tv_sec = sec;
+    timerValue.it_value.tv_nsec = nsec;
+    timerValue.it_interval.tv_sec = sec;
+    timerValue.it_interval.tv_nsec = nsec;
+
+    //setting listener
+    p.fd = timerfd;
+    p.revents = 0;
+    p.events = POLLIN;
+    fds.emplace_back(p);
+
+    //starting timer
+    if (timerfd_settime(timerfd, 0, &timerValue, NULL) < 0)
+        syserr("Timer start");
+
+    return timerfd;
+}
+
+////////////////////////////////////////////RESET TIMER////////////////////////////////////////////////
 void Poll::resetTimer(int timerFd, int sec, long int nsec)
 {
     itimerspec timerValue;
@@ -125,22 +125,25 @@ void Poll::resetTimer(int timerFd, int sec, long int nsec)
     timerValue.it_interval.tv_nsec = nsec;
 
     if (timerfd_settime(timerFd, 0, &timerValue, NULL) < 0)
-        syserr("timer reset");
+        syserr("Timer reset");
 }
 
+//============================PUBLIC======================================//
 void Poll::resetTimer()
 {
     resetTimer(updateTimerFd, 0, rTime);
 }
 
-bool Poll::checkName(char *name, int len)
+//========================================PRIVATE===============================//
+///////////////////////////////////////DELETE TIMER///////////////////////////////
+void Poll::deleteTimer(int timerFd)
 {
-    for (int i = 0; i < len; i++)
-        if (name[i] < 33 || name[i] > 126)
-            return false;
-    return true;
+    fds.erase(std::find_if(fds.begin(), fds.end(), [timerFd](const pollfd &poll)
+                           { return poll.fd == timerFd; }));
 }
 
+//===================================================PUBLIC METHODS====================================//
+///////////////////////////////////////DO POLL///////////////////////////////////////////////////////////
 PollOutput Poll::doPoll()
 {
     PollOutput out;
@@ -148,7 +151,7 @@ PollOutput Poll::doPoll()
     out.noMsg = true;
     out.addr.addrlen = 0;
 
-    //std::cout << "Polling\n";
+    //polling events
     clearRevents();
     if (poll(&fds[0], fds.size(), -1) < 0)
         syserr("poll");
@@ -158,19 +161,23 @@ PollOutput Poll::doPoll()
     socklen_t addrlen = sizeof(addr);
     ClientMessage message;
 
+    //if got message
     if (fds[0].revents == POLLIN)
-    {
+    {   
+        //receive message
         int recv;
         char buffin[34];
         memset(buffin, 0, 34);
         if ((recv = recvfrom(fds[0].fd, buffin, sizeof(buffin), 0, (sockaddr *)&addr, &addrlen)) < 0)
             syserr("recv");
-        
-        if (recv <= 33 && recv >= clientDataSize )
+
+        //validity checks
+        if (recv <= 33 && recv >= clientDataSize)
         {
             memcpy((char *)&message, buffin, sizeof(message));
             if (message.turn_direction <= 2 && checkName(message.player_name, recv - clientDataSize))
-            {
+            {   
+                //saving and possibly adding new client
                 littleMessage(message, recv - clientDataSize);
                 out.addr = MySockaddr(addr, addrlen);
 
@@ -186,12 +193,14 @@ PollOutput Poll::doPoll()
         }
     }
 
+    //if tick timer expired
     if (fds[1].revents == POLLIN)
     {
         resetTimer();
         out.calcRound = true;
     }
 
+    //disconnecting timeouted clients
     for (size_t i = 2; i < fds.size(); i++)
     {
         if (fds[i].revents == POLLIN)
@@ -203,12 +212,10 @@ PollOutput Poll::doPoll()
                 if (it2 != clients.end())
                 {
                     out.toDisconnect.emplace_back(*it2);
-                    //std::cout << "removing  clients : " << clients.size() << " and timers: " << timers.size() << '\n';
                     timersFromAddr.erase(*it2);
-                    //std::cout << "removed  clients : " << clients.size() << " and timers: " << timers.size() << '\n';
                     deleteTimer(it->first);
                     clients.erase(it2);
-                    timers.erase(it);   
+                    timers.erase(it);
                 }
             }
         }
@@ -218,6 +225,7 @@ PollOutput Poll::doPoll()
     return out;
 }
 
+////////////////////////////////GET MAIN SOCK//////////////////////////////////////////////////////
 int Poll::getMainSock() const
 {
     return fds[0].fd;

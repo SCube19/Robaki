@@ -7,68 +7,82 @@
 #include <sys/timerfd.h>
 #include <poll.h>
 #include <netdb.h>
-#include <string>
-#include <unistd.h>
-#include <stdlib.h>
 #include <vector>
 #include <algorithm>
-#include <iostream>
 #include <endian.h>
 #include <map>
 #include <set>
-#include <memory>
 #include <string.h>
 
-#include "gui/gui2/err.h"
+#include "err.h"
 #include "Client.h"
 #include "Helper.h"
 
 using sock_ptr = std::shared_ptr<MySockaddr>;
 
-namespace
-{
-    constexpr short timeout = 2;
-    constexpr short clientMax = 26;
-    constexpr short clientDataSize = 13;
-    constexpr short clientNameMax = 21;
-} // namespace
-
 struct PollOutput
 {
+    //list of clients to be cleaned out
     std::vector<MySockaddr> toDisconnect;
+    //client address
     MySockaddr addr;
+    //actual message
     ClientMessage message;
+    //whether to do another tick
     bool calcRound;
+    //null structure identifier
     bool noMsg;
 };
 
 class Poll
 {
-
 private:
     int port;
-    long int rTime;
-    std::vector<pollfd> fds;
-    int updateTimerFd;
     struct sockaddr_in6 server;
 
-    std::set<MySockaddr> clients;
+    //event descriptors
+    std::vector<pollfd> fds;
+    //timer descriptor to address
     std::map<int, MySockaddr> timers;
+    //address to timer descriptor
     std::map<MySockaddr, int> timersFromAddr;
 
+    //tick timer descriptor
+    int updateTimerFd;
+    //tick time
+    long int rTime;
+    
+    //client address set
+    std::set<MySockaddr> clients;
+    
+    //clears pollfd revents
     void clearRevents();
-    void littleMessage(ClientMessage &msg, int nameLen);
-    void deleteTimer(int timerFd);
-    int createTimer(int sec, long int nsec);
-    void resetTimer(int timerFd, int sec, long int nsec);
+    //converts received message to little endian and adds \0 at the end
+    void littleMessage(ClientMessage &msg, int nameLen) const;
+
+    //add new client address to set
     void addClient(const MySockaddr &addr);
-    bool checkName(char* name, int len);
+    //checks if given name is valid
+    bool checkName(char *name, int len) const;
+
+    //creates new timer and starts tracking it
+    int createTimer(int sec, long int nsec);
+    //resets timer's elapsed time
+    void resetTimer(int timerFd, int sec, long int nsec);
+    //makes object stop tracking of given timer
+    void deleteTimer(int timerFd);
 public:
     Poll(unsigned portArg, double roundTime);
+
+    //main object function
+    //it waits for some event to happen and returns PollOutput structure accordingly
     PollOutput doPoll();
+
+    //returns main udp connection socket
     int getMainSock() const;
+
+    //resets main tick timer
     void resetTimer();
-    void hardResetMainTimer();
 };
 
 #endif // !POLL_H

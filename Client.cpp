@@ -60,6 +60,11 @@ coord_int Client::getPixelCoord() const
     return coord_int((uint32_t)coords.first, (uint32_t)coords.second);
 }
 
+bool Client::willingToStart() const
+{
+    return wantsToStart;
+}
+
 void Client::observe(bool x)
 {
     observer = x;
@@ -85,11 +90,6 @@ void Client::setAngle(int angle)
     turningAngle = angle;
 }
 
-void Client::addAngle(int angle)
-{
-    turningAngle = (turningAngle + angle + 360) % 360;
-}
-
 void Client::setSessionId(uint64_t sessionArg)
 {
     session_id = sessionArg;
@@ -100,9 +100,24 @@ void Client::setName(std::string nameArg)
     name = nameArg;
 }
 
+void Client::die(bool x)
+{
+    alive = !x;
+}
+
 void Client::setCoords(const client_coord &c)
 {
     coords = c;
+}
+
+void Client::will(bool x)
+{
+    wantsToStart = x;
+}
+
+void Client::addAngle(int angle)
+{
+    turningAngle = (turningAngle + angle + 360) % 360;
 }
 
 void Client::changeClient(const ClientMessage &msg)
@@ -124,19 +139,4 @@ bool Client::move()
     coords = tmp;
     // std::cerr << coords.first << " " << coords.second << "\n\n";
     return rVal;
-}
-
-void Client::die(bool x)
-{
-    alive = !x;
-}
-
-bool Client::willingToStart() const
-{
-    return wantsToStart;
-}
-
-void Client::will(bool x)
-{
-    wantsToStart = x;
 }
