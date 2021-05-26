@@ -1,13 +1,12 @@
-#include <iostream>
 #include <getopt.h>
-#include <string>
-#include <map>
+
 #include "Client.h"
 #include "Poll.h"
 #include "EventHandler.h"
 #include "Sender.h"
-#include <chrono>
+#include "err.h"
 
+//option recognizion section
 bool is_number(const std::string& s)
 {
     return !s.empty() && std::find_if(s.begin(), 
@@ -80,20 +79,19 @@ int main(int argc, char *argv[])
     options options;
     setOptions(options, argc, argv);
 
+    //making poll interface
     Poll poll(options.port, 1.0f / (double)options.roundsPerSecond);
+    //making event handler interface 
     EventHandler eventHandler(options, Sender(poll.getMainSock()));
-    int tickCounter = 0;
+
     while (1)
     {
-        auto start = std::chrono::high_resolution_clock::now();
+        
         PollOutput out = poll.doPoll();
         eventHandler.disconnectClients(out.toDisconnect);
         if (eventHandler.gameStarted() && out.calcRound)
         {
             eventHandler.tick();
-            tickCounter++;
-            auto end = std::chrono::high_resolution_clock::now();
-            //std::cout << "TICKCOUNTER: " << tickCounter << "\nEST. TICK DURATION: " << std::chrono::duration<double>(end - start).count() << '\n';
         }
         
         if (!out.noMsg)
